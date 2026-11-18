@@ -10,6 +10,7 @@ CSCI2204 DBMS, KBTU Fall 2026. Flask REST API over PostgreSQL using psycopg3 and
 | `setup_db.py` | Creates schema (customers, accounts, transactions), seeds 10 customers / 15 accounts with `executemany`, tests UNIQUE | 2, R1 |
 | `db.py` | Creates one shared `ConnectionPool` (min 2, max 8) at startup | 6, R3 |
 | `app.py` | All endpoints, transactions, error handling, retry | 3–7 |
+| `templates/index.html` | Web interface (HTML + JavaScript) for the API | extra |
 | `deadlock_demo.sql` | Step-by-step deadlock in two psql sessions | 4.4 |
 | `load_test.py` | 20 concurrent requests with threads, prints pool stats | 6.3 |
 | `test_requests.sh` | curl tests for every endpoint, error code and SQL injection | 3.4, 5.4 |
@@ -35,6 +36,13 @@ python app.py                     # server on http://127.0.0.1:5000
 ./test_requests.sh                # all curl tests
 python load_test.py               # pool load test
 ```
+
+## Web interface
+
+Start the server (`python app.py`) and open **http://127.0.0.1:5000/** in a browser.
+The page (`templates/index.html`) uses JavaScript `fetch()` to call the same REST API:
+customers list and search, new customer, accounts and history, deposit / withdraw, transfer,
+and a live database status badge from `/health`.
 
 ## Endpoints
 

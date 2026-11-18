@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 import psycopg
 from psycopg import errors as pg_errors
 from psycopg import IsolationLevel
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 
 from db import pool
 
@@ -47,7 +47,12 @@ def parse_amount(value):
 
 
 # ============================ CUSTOMERS ============================
+# ============================ INTERFACE ============================
 
+# GET / - web page (templates/index.html)
+@app.route("/")
+def index():
+    return render_template("index.html")
 # GET /customers            - все клиенты
 # GET /customers?city=Almaty - поиск по городу
 @app.route("/customers", methods=["GET"])

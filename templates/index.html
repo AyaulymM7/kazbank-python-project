@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KazBank</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #f2f4f8; margin: 0; color: #222; }
+  header { background: #1f4e79; color: white; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { margin: 0; font-size: 24px; }
+  #health { padding: 6px 12px; border-radius: 6px; background: #888; font-size: 14px; }
+  #health.ok { background: #2e9e4f; }
+  #health.error { background: #c62828; }
+  #message { margin: 16px 24px 0; padding: 10px 14px; border-radius: 6px; display: none; }
+  #message.ok { display: block; background: #e3f4e8; border: 1px solid #2e9e4f; }
+  #message.error { display: block; background: #fdeaea; border: 1px solid #c62828; }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; padding: 16px 24px; }
+  .card { background: white; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  .card h2 { margin-top: 0; font-size: 18px; color: #1f4e79; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  input, select { padding: 8px; border: 1px solid #bbb; border-radius: 6px; flex: 1; min-width: 90px; }
+  button { padding: 8px 14px; border: none; border-radius: 6px; background: #2e6db4; color: white; cursor: pointer; }
+  button:hover { background: #1f4e79; }
+  button.small { padding: 4px 8px; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e5e5e5; }
+  th { background: #eef3fa; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>KazBank</h1>
+  <span id="health">Checking database...</span>
+</header>
+
+<div id="message"></div>
+
+<main>
+  <!-- Customers: GET /customers -->
+  <section class="card">
+    <h2>Customers</h2>
+    <div class="row">
+      <input id="city" placeholder="City (empty = all)">
+      <button onclick="loadCustomers()">Search</button>
+    </div>
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>City</th><th>Email</th></tr></thead>
+      <tbody id="customers"></tbody>
+    </table>
+  </section>
+
+  <!-- New customer: POST /customers -->
+  <section class="card">
+    <h2>New customer</h2>
+    <div class="row"><input id="new_name" placeholder="Full name"></div>
+    <div class="row"><input id="new_city" placeholder="City (default Almaty)"></div>
+    <div class="row"><input id="new_email" placeholder="Email"></div>
+    <button onclick="addCustomer()">Add customer</button>
+  </section>
+
+  <!-- Accounts: GET /accounts, GET /transactions -->
+  <section class="card">
+    <h2>Accounts</h2>
+    <div class="row">
+      <input id="customer_id" type="number" placeholder="Customer ID">
+      <button onclick="loadAccounts()">Show accounts</button>
+    </div>
+    <table>
+      <thead><tr><th>ID</th><th>Number</th><th>Balance</th><th></th></tr></thead>
+      <tbody id="accounts"></tbody>
+    </table>
+    <h3 id="history_title"></h3>
+    <table>
+      <tbody id="history"></tbody>
+    </table>
+  </section>
+
+  <!-- Deposit / withdraw: POST /transactions -->
+  <section class="card">
+    <h2>Deposit / Withdraw</h2>
+    <div class="row">
+      <input id="tx_account" type="number" placeholder="Account ID">
+      <input id="tx_amount" type="number" placeholder="Amount">
+      <select id="tx_type">
+        <option value="credit">Deposit (credit)</option>
+        <option value="debit">Withdraw (debit)</option>
+      </select>
+    </div>
+    <button onclick="makeTransaction()">Confirm</button>
+  </section>
+
+  <!-- Transfer: POST /transfer -->
+  <section class="card">
+    <h2>Transfer</h2>
+    <div class="row">
+      <input id="from_account" type="number" placeholder="From account ID">
+      <input id="to_account" type="number" placeholder="To account ID">
+      <input id="tr_amount" type="number" placeholder="Amount">
+    </div>
+    <button onclick="makeTransfer()">Transfer</button>
+  </section>
+</main>
+
+<script>
+// Send a request to our Flask API and return the status code and JSON
+async function api(method, url, body) {
+  const options = { method: method, headers: { "Content-Type": "application/json" } };
+  if (body) options.body = JSON.stringify(body);
+  try {
+    const response = await fetch(url, options);
+    const data = await response.json();
+    return { status: response.status, data: data };
+  } catch (e) {
+    return { status: 0, data: { error: "Server is not running" } };
+  }
+}
+
+function val(id) {
+  return document.getElementById(id).value.trim();
+}
+
+// Show text safely (no HTML injection)
+function esc(text) {
+  const div = document.createElement("div");
+  div.textContent = text ?? "";
+  return div.innerHTML;
+}
+
+// Green box for success, red box for errors
+function showMessage(status, text) {
+  const box = document.getElementById("message");
+  box.textContent = status + " - " + text;
+  box.className = (status >= 200 && status < 300) ? "ok" : "error";
+}
+
+async function loadCustomers() {
+  const city = val("city");
+  const url = city ? "/customers?city=" + encodeURIComponent(city) : "/customers";
+  const r = await api("GET", url);
+  if (r.status !== 200) return showMessage(r.status, r.data.error);
+
+  let rows = "";
+  for (const c of r.data) {
+    rows += `<tr><td>${c.id}</td><td>${esc(c.name)}</td><td>${esc(c.city)}</td><td>${esc(c.email)}</td></tr>`;
+  }
+  document.getElementById("customers").innerHTML = rows || "<tr><td colspan='4'>No customers</td></tr>";
+}
+
+async function addCustomer() {
+  const body = {
+    full_name: val("new_name") || null,   // empty -> null -> 400
+    city: val("new_city") || undefined,   // empty -> server uses Almaty
+    email: val("new_email") || null,
+  };
+  const r = await api("POST", "/customers", body);
+  if (r.status === 201) {
+    showMessage(r.status, "Customer created, id = " + r.data.customer_id);
+    loadCustomers();
+  } else {
+    showMessage(r.status, r.data.error);
+  }
+}
+
+async function loadAccounts() {
+  const id = val("customer_id");
+  const r = await api("GET", "/accounts?customer_id=" + encodeURIComponent(id));
+  if (r.status !== 200) return showMessage(r.status, r.data.error);
+
+  let rows = "";
+  for (const a of r.data) {
+    rows += `<tr><td>${a.account_id}</td><td>${esc(a.account_number)}</td><td>${a.balance}</td>
+             <td><button class="small" onclick="loadHistory(${a.account_id})">History</button></td></tr>`;
+  }
+  document.getElementById("accounts").innerHTML = rows || "<tr><td colspan='4'>No accounts</td></tr>";
+}
+
+async function loadHistory(accountId) {
+  const r = await api("GET", "/transactions?account_id=" + accountId);
+  if (r.status !== 200) return showMessage(r.status, r.data.error);
+
+  document.getElementById("history_title").textContent = "History of account " + accountId;
+  let rows = "<tr><th>ID</th><th>Type</th><th>Amount</th><th>Date</th></tr>";
+  for (const t of r.data) {
+    rows += `<tr><td>${t.tx_id}</td><td>${t.tx_type}</td><td>${t.amount}</td><td>${t.created_at.slice(0, 19)}</td></tr>`;
+  }
+  if (r.data.length === 0) rows += "<tr><td colspan='4'>No operations</td></tr>";
+  document.getElementById("history").innerHTML = rows;
+}
+
+async function makeTransaction() {
+  const body = {
+    account_id: Number(val("tx_account")),
+    amount: Number(val("tx_amount")),
+    tx_type: val("tx_type"),
+  };
+  const r = await api("POST", "/transactions", body);
+  if (r.status === 201) {
+    showMessage(r.status, "Done. New balance: " + r.data.new_balance);
+    if (val("customer_id")) loadAccounts();
+  } else {
+    showMessage(r.status, r.data.error);
+  }
+}
+
+async function makeTransfer() {
+  const body = {
+    from_account: Number(val("from_account")),
+    to_account: Number(val("to_account")),
+    amount: Number(val("tr_amount")),
+  };
+  const r = await api("POST", "/transfer", body);
+  if (r.status === 200) {
+    showMessage(r.status, `Transferred ${r.data.amount} from account ${r.data.from} to account ${r.data.to}`);
+    if (val("customer_id")) loadAccounts();
+  } else {
+    showMessage(r.status, r.data.error);
+  }
+}
+
+// Database status in the header (GET /health), updated every 5 seconds
+async function checkHealth() {
+  const r = await api("GET", "/health");
+  const badge = document.getElementById("health");
+  if (r.status === 200) {
+    badge.textContent = "Database OK | pool " + r.data.pool.pool_size + "/" + r.data.pool.pool_max;
+    badge.className = "ok";
+  } else {
+    badge.textContent = "Database unavailable";
+    badge.className = "error";
+  }
+}
+
+loadCustomers();
+checkHealth();
+setInterval(checkHealth, 5000);
+</script>
+</body>
+</html>
